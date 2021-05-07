@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+    <style>
+        *{
+            font-family: Verdana;
+        }
+        #sidebar
+        {
+            background-color: white;
+            position: fixed;
+            left: 0;
+            top:0;
+            width: 15vw;
+            margin:0;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+        }
+        body
+        {
+            background-color:rgb(241, 241, 241);
+            margin:0;
+            width: 85vw;
+            margin-left: 15vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            background-color: blueviolet;
+            min-height: 50px;
+            color:white;
+            text-align: center;
+            line-height: 50px;
+            cursor: pointer;
+          }
+          .dropdown:hover
+          {
+            background-color: rgb(125, 39, 206);
+          }
+          
+          .dropdown-content {
+            display: none;
+            background-color: #f9f9f9;
+            min-width: 160px;
+            line-height: 50px;
+          }
+          
+          .dropdown-content:hover
+          {
+            background-color: #e7e7e7;
+          }
+
+          .expanded .dropdown-content {
+            display: block;            
+          }
+
+
+          div{
+              text-align: center;
+
+          }
+
+          h1{
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            background-color: rgb(113, 43, 226);
+            color:white;
+            margin:0;
+            height: 50px;
+            line-height: 50px;
+            text-align: center;
+          }
+
+          code{
+            
+            display: inline-block;
+            border-radius:5px;
+            background-color: rgb(20, 20, 20);
+            color:#f9f9f9;
+            width: auto;
+            padding:10px;
+            margin: 10px 0;
+          }
+
+          .prettyprinted span
+          {
+            font-family: 'Courier New' !important;
+          }
+
+          a{
+              text-decoration: none;
+              color:black;
+          }
+
+          section{
+              width: 70vw;
+              margin-left: 5vw;
+          }
+
+          h2{
+              font-size: 200%;
+              font-weight: 200;
+          }
+          h3{
+            font-size: 100%;
+            font-weight: 100;
+            border: rgb(211, 211, 211);
+            border-style: solid;
+            padding: 15px 0;
+            border-width: 1px 0;
+            margin-bottom: 35px;
+        }
+        li, p{
+            line-height: 25px;
+        }
+        h4{
+            font-size: 130%;
+            font-weight: 200;
+        }
+        span.com{
+            color:rgb(71, 71, 71)
+        }
+
+        span.typ
+        {
+            color:rgb(116, 255, 139);
+        }
+
+        span.lit{
+            color:rgb(142, 238, 255);
+        }
+
+        span.pun{
+            color: rgb(221, 221, 221);
+        }
+
+        span.pln
+        {
+            color: rgb(221, 221, 221);
+        }
+
+        span.kwd
+        {
+            color:rgb(85, 211, 159);
+        }
+
+        span.str{
+            color:rgb(97, 151, 121);
+        }
+
+        .error
+        {
+            text-decoration-line: underline;
+            text-decoration-style: wavy;
+            text-decoration-color: red;
+            padding: 0;
+            margin:0;
+        }
+    </style>
+    <div id="sidebar">
+        <div class="dropdown">
+            <span>Intro</span>
+            <div class="dropdown-content">
+              <a href="#desc">Description</a>
+            </div>
+            <div class="dropdown-content">
+                <a href="#desc">Description</a>
+              </div>
+          </div>
+          <div class="dropdown">
+            <a href="#limits"></a><span>Limitations </span></a>
+            <div class="dropdown-content">
+              <a href="#compiletime">Compile-time</a>
+            </div>
+          </div>
+    </div>
+    <body>
+        <h1>
+            Minecraft Command Language
+        </h1>
+        <section>
+            
+            <h2 id="desc">
+                What is MCL
+            </h2>
+            <h3>
+                MCL is not java. Watch your step.
+            </h3>
+            <p>
+                MCL is a Java-<i>like</i> language that is compiled down into a datapack to whatever degree is possible in Minecraft. <br>
+                It's Java-<i>like</i> because there are a number of builtin classes and methods that are different. Additionally, I've taken things from python and C# that I think are more intuitive than Java
+            </p>
+        </section>
+        <section>
+            <h2 id="limits">
+                What are the Limitations of MCL?
+            </h2>
+            <h3>
+                Most languages compile to a lower-level-language. MCL compiles into Minecraft Commands. Not quite as capable as x86 assembly.
+            </h3>
+            <h4 id="#compiletime">
+                To kick things off, let's define some things.
+            </h4>
+            <ul>
+                <li>
+                    <strong> Compile-time variable</strong>: a variable that changes with the logic of the program, but when it reaches an endpoint, it becomes static. <br>
+                    After it compiles it will never change. For example, this works: <br>
+                    <code class="prettyprint">
+                        Cstring str = "Hello, world!"; <br>
+                        str = str[0:5]; <br>
+                        //str is now "Hello" <br> <br>
+                        print(str); <br>
+                        //MCL will print "Hello" to the chat.
+                    </code>
+                    <br>
+                    And this does not:
+                    <br>
+                    <code class="prettyprint">
+                        //Summons a new zombie at (0,0,0)<br>
+                        Zombie zomb = new Zombie(0,0,0); <br> <br>
+                        
+                        Cstring str = "Hello, world!" + zomb.UUID[0]; <br>
+                        //MCL can't access the UUID of the Zombie, and because Minecraft does not allow for string concatenation, <br>
+                        //it is impossible to assign this variable. <br> <br>
+                        str = str[0:5]; <br>
+                        print(str); <br>
+                    </code> <br>
+                    This is a big problem in MCL that can't really be resolved, but I can add as much functionality as I can. <br>
+                    For example, <code class="prettyprint">string str = "Hello, world!" + zomb.Pos[0]</code> does work, as MCL knows what nbt data was used to summon the Zombie 
+                    <br> and simply recalls these values. <br>
+                    There's no way to garuntee that this data is accurate. <br>
+                    For example, if <code class="prettyprint">Zombie zomb = new Zombie(0,0,0);</code> is run one tick before <code class="prettyprint">string str = "Hello, world!" + zomb.Pos[0]</code>, <br>
+                    anything could happen to the zombie in this tick outside of what has been defined in MCL.
+                </li>
+                <br> <br>
+                <li>
+                     <strong> Run-time variable</strong> : floats, ints, and arrays are Runtime variables, meaning that they can directly interact with the Minecraft world. <br>
+                    This kind of thing works with runtime variables:
+                    <br>
+                    <code class="prettyprint">
+                        //Summons a new zombie at (0,0,0)<br>
+                        Zombie zomb = new Zombie(0,0,0); <br> <br>
+                        
+                        int num = 5 + zomb.UUID[0]; <br>
+                        //when this line runs, whatever the first section of the zombie's UUID will be added to 5 and stored in the variable 'num' <br> <br>
+
+                        print(num); <br>
+                        //MCL will print the value of 'num'
+                    </code> <br>
+                </li>
+            </ul>   
+            <br>
+            <h4>
+                Now let's talk about the magic, or rather cursed number: 2147483647
+            </h4>
+            <p>
+                2147483647 is the largest number able to be stored in an integer, and unfortunately, Minecraft Scoreboards only store values as integers. <br>
+                Doubly unfortunately, the only real way to do math in Minecraft (for the most part) is with Scoreboard operations. <br> <br>
+                Why is this a problem? <br>
+                Well, have you ever wanted to add 1 + 1.5? <br>
+                Too bad, you meant 1 + 1. <br>
+                TL;DR, basically <strong> runtime floats in mcl only hold 3 decimal places, and have a maximum of 2147482.999.</strong> <br>
+                Compile-time floats are just normal floats, but once they hit runtime they get cut down. <br> <br>
+                This [2147482.999, -2147483.999] limit is not permanent, as there are workarounds, but as it stands, this is just a limitation of the language.
+            </p>
+            <h4>
+                MCL is in beta
+            </h4>
+            <p>
+                And because of this, it's missing some functionality. <br>
+                Things that are planned but not in release v0.1 include:
+                <ul>
+                    <li>
+                        World gen
+                    </li>
+                    <li>
+                        Datapack reverse compilation (Turning a datapack into an MCL file. Useful for importing pre-existing projects)
+                    </li>
+                    <li>
+                        Custom entities
+                    </li>
+                    <li>
+                        Custom blocks
+                    </li>
+                    <li>
+                        Intellisense
+                    </li>
+                    <li>
+                        Custom structures
+                    </li>
+                    <li>
+                        Mega numbers
+                    </li>
+                </ul>
+            </p>
+            <h4>
+                MCL isn't as Efficient
+            </h4>
+            <p>
+                In order for MCL to have the capability that it does, it has to run a number of extra commands that would otherwise not be run if programming a datapack by hand. <br>
+                But you're probably not using MCL for its speed. You're using it for its ease of use. <br>
+                Of course, the processing overhead introduced is as small as possible and can always be decreased, but it will never be as fast as programming a datapack yourself. <br> <br>
+                If you want to have a more hands-on approach, you have direct access to all of Minecraft's commands through the builtin classes.
+            </p>
+            
+            
+        </section>
+        <section>
+            <h2 id="primitives">
+                Primitives
+            </h2>
+            <h3>
+                Ugh ugh
+            </h3>
+            <p>
+                Every primitive has both a Runtime and Compiletime variant. Compiletime primitives can be cast as Runtime primitives, but not the other way around. <br>
+                As you might expect, runtime variables and compiletime variables do not mix. <br>
+                <code  class="prettyprint">
+                    Rint runtimeVariable = 1; <br>
+                    Cint compiletimeVariable = 2; <br> <br>
+
+                    <code class="prettyprint error" >
+                        print(runtimeVariable + compiletimeVariable);
+                    </code> 
+                    <br>
+                    //this isn't allowed <br> <br>
+
+                    print(runtimeVariable + Rint(compiletimeVariable)); <br>
+                    //prints 3 <br> 
+                    //It takes a snapshot of the value of 'compiletimeVariable' and <br> 
+                    //the compiler adds it to a list of constants that are declared when the datapack is loaded. <br>
+                    //compiletimeVariable remains a compiletime variable <br> <br>
+
+                    compiletimeVariable ++; <br>
+
+
+                    print(compiletimeVariable = Rint(compiletimeVariable)); <br>
+                    //compiletimeVariable is now of type Rint, and all operations done to it will happen at runtime.  <br>
+                    //this is allowed because cint and Rint are both numbers and thus can be cast implicitly
+
+
+
+                </code> <br>
+                Here's a quick list of every builtin Primitive for reference
+            </p>
+            <ul>
+                <li>
+                    Rint
+                </li>
+                <li>
+                    Cint
+                </li>
+                <li>
+                    Rfloat
+                </li>
+                <li>
+                    Cfloat
+                </li>
+                <li>
+                    Rchar
+                </li>
+                <li>
+                    Cchar
+                </li>
+                <li>
+                    Rstring
+                </li>
+                <li>
+                    Cstring
+                </li>
+                <li>
+                    Rlist
+                </li>
+                <li>
+                    Clist
+                </li>
+
+            </ul>
+
+            <h4>
+                Integers
+            </h4>
+            <p>
+                rint and cint
+            </p>
+        </section>
+    </body>
+
+
+    <script>
+        var elements = document.getElementsByClassName("dropdown");
+        
+        var expand = function() {
+            this.classList.toggle("expanded")
+        };
+
+        for (var i = 0; i < elements.length; i++) {
+            elements[i].addEventListener('click', expand, false);
+        }
+
+    </script>
+</html>
