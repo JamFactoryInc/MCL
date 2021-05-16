@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+    <script src="https://code.iconify.design/1/1.0.4/iconify.min.js">   </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans">
+    <link rel="stylesheet" href="styles.css">
+    <div id="sidebar" class="sidebar">
+
+    </div>
+    <body>
+        <div class='body'>
+        <section>
+            <h1>
+                Limitations
+            </h1>
+            <h3>
+                Most languages compile to a lower-level-language. MCL compiles into Minecraft Commands. Not quite as capable as x86 assembly.
+            </h3>
+            <h2>
+                Compiletime vs Runtime
+            </h2>
+            <h4 id="compiletime">
+                To kick things off, let's define some things.
+            </h4>
+            <ul>
+                <li>
+                    <strong> Compile-time variable</strong>: a variable that changes with the logic of the program, but when it reaches an endpoint, it becomes static. <br>
+                    After it compiles it will never change. For example, this works: <br>
+                    <code class="prettyprint">
+                        Cstring str = "Hello, world!"; <br>
+                        str = str[0:5]; <br>
+                        //str is now "Hello" <br> <br>
+                        print(str); <br>
+                        //MCL will print "Hello" to the chat.
+                    </code>
+                    <br>
+                    And this does not:
+                    <br>
+                    <code class="prettyprint">
+                        //Summons a new zombie at (0,0,0)<br>
+                        Zombie zomb = new Zombie(0,0,0); <br> <br>
+                        
+                        Cstring str = "Hello, world!" + zomb.UUID[0]; <br>
+                        //MCL can't access the UUID of the Zombie, and because Minecraft does not allow for string concatenation, <br>
+                        //it is impossible to assign this variable. <br> <br>
+                        str = str[0:5]; <br>
+                        print(str); <br>
+                    </code> <br>
+                    This is a big problem in MCL that can't really be resolved, but I can add as much functionality as I can. <br>
+                    For example, <code class="prettyprint inline">string str = "Hello, world!" + zomb.Pos[0]</code> does work, <br> as MCL knows what nbt data was used to summon the Zombie 
+                    <br> and simply recalls these values. <br>
+                    There's no way to guarantee that this data is accurate. <br>
+                    For example, if <code class="prettyprint inline">Zombie zomb = new Zombie(0,0,0);</code> is run one tick before <code class="prettyprint inline">string str = "Hello, world!" + zomb.Pos[0]</code>, <br>
+                    anything could happen to the zombie in this tick outside of what has been defined in MCL.
+                </li>
+                <br> <br>
+                <li>
+                     <strong> Run-time variable</strong> : floats, ints, and arrays are Runtime variables, meaning that they can directly interact with the Minecraft world. <br>
+                    This kind of thing works with runtime variables:
+                    <br>
+                    <code class="prettyprint">
+                        //Summons a new zombie at (0,0,0)<br>
+                        Zombie zomb = new Zombie(0,0,0); <br> <br>
+                        
+                        int num = 5 + zomb.UUID[0]; <br>
+                        //when this line runs, whatever the first section of the zombie's UUID will be added to 5 and stored in the variable 'num' <br> <br>
+
+                        print(num); <br>
+                        //MCL will print the value of 'num'
+                    </code> <br>
+                </li>
+            </ul>   
+            <br>
+            <h2>
+                Number Precision
+            </h2>
+            <h4 id="cursednumber">
+                Now let's talk about the magic, or rather cursed number: 2147483647
+            </h4>
+            <p>
+                2147483647 is the largest number able to be stored in a signed integer, and unfortunately, Minecraft Scoreboards only store values as signed integers. <br>
+                Doubly unfortunately, the only real way to do math in Minecraft (efficiently at least) is with Scoreboard operations. <br> <br>
+                Why is this a problem? <br>
+                Well, have you ever wanted to add 1 + 1.5? <br>
+                Too bad, you meant 1 + 1. <br>
+                TL;DR, basically <strong> runtime floats in mcl only hold 3 decimal places, and have a maximum of 2147482.999.</strong> <br>
+                Compile-time floats are just normal floats, but once they hit runtime they get cut down. <br> <br>
+                This (-2147483.999, 2147482.999) limit is not permanent, as there are workarounds, but as it stands, this is just a limitation of the language.
+            </p>
+            <h4>
+                MCL is in beta
+            </h4>
+            <p>
+                And because of this, it's missing some functionality. <br>
+                Things that are planned but not in release v0.1 include:
+                <ul>
+                    <li>
+                        World gen
+                    </li>
+                    <li>
+                        Datapack reverse compilation (Turning a datapack into an MCL file. Useful for importing pre-existing projects)
+                    </li>
+                    <li>
+                        Custom entities
+                    </li>
+                    <li>
+                        Custom blocks
+                    </li>
+                    <li>
+                        Intellisense
+                    </li>
+                    <li>
+                        Custom structures
+                    </li>
+                    <li>
+                        Mega numbers
+                    </li>
+                </ul>
+            </p>
+            <h4>
+                MCL isn't as Efficient
+            </h4>
+            <p>
+                In order for MCL to have the capability that it does, it has to run a number of extra commands that would otherwise not be run if programming a datapack by hand. <br>
+                But you're probably not using MCL for its speed. You're using it for its ease of use. <br>
+                Of course, the processing overhead introduced is as small as possible and can always be decreased, but it will never be as fast as programming a datapack yourself. <br> <br>
+                If you want to have a more hands-on approach, you have direct access to all of Minecraft's commands through the builtin classes.
+            </p>
+            
+            <h2>
+                Runtime strings
+                
+            </h2>
+            <h4>
+                Runtime strings are a complex subject in MCL. Before using them I highly suggest reading this section.
+            </h4>
+            <p>
+                Real string concatenation is not possible in vanilla Minecraft. <br> 
+                There are ways of faking it and there is a potential way to really do it with endermen, but it's slow and it's prevented by a bug that's been around since 2016 so there's not much hope of Mojang fixing it. <br>
+                
+            </p>
+            <h4>
+                String manipulation in Minecraft
+            </h4>
+            <p>
+                Thanks to <a href="https://github.com/McTsts/Minecraft-String-Utilities" class='link' target="_blank">Ts's</a> work on string parsing, it is possible to convert a string into an array of characters. <br>
+                This allows for the typical string manipulation available in modern programming languages such as substring, concatenation, char at index, upcase, downcase, enumeration, etc. <br>
+                <br>
+                The problem is once you parse a string into a char array, there's no way to return it to its happy string self due to Minecraft's inability to concatenate two strings. <br>
+                <br>
+                This is why MCL's Rstrings are immutable. They are the original strings taken directly from the source NBT. <br>
+                Their uses include:
+                <ul>
+                    <li>
+                        Setting other Rstrings or NBT string values such as item ids, tags, names, etc. Example: <br>
+                        <code class="prettyprint"> 
+                            Rstring foo = "minecraft:dirt"; <br>
+                            Rstring bar = "minecraft:stone"; <br>
+                            foo = bar; // foo is now equal to "minecraft:stone" <br>
+                            Item item = Item(Item.stick); //summons a stick ground item at (0,0,0) <br>
+                            item.id = foo //changes the ground item from a stick to a stone block</code>
+                    </li>
+                    <li>
+                        Fast way of comparing equality of two NBT string values. Example: <br>
+                         <code class="prettyprint"> Rstring foo = "minecraft:stick"; <br>
+                                                    Item item = Item(Item.stick); //summons a stick ground item at (0,0,0) <br>
+                                                    if item.id == foo //evaluates to true</code>
+                    </li>
+                    <li>
+                        Rstrings can be cast to Dstrings for more manipulation without affecting the original value. Example:
+                        <code class="prettyprint"> 
+                            Rstring foo = "Hello, world!"; <br>
+                            Dstring bar = foo; //"Hello, world!" is converted to a char array and stored in bar. <br>
+                            //foo remains unchanged <br>
+                            print(foo[1:]); //prints "ello, world!"</code>
+                    </li>
+                </ul>
+
+            </p>
+            <h4>
+                Fake concatenation
+            </h4>
+            <p>
+                Minecraft has a system to display proxy values. <br>
+                This is mosty easily represented by the Tellraw command. Example:
+                <code class="prettyprint">
+                    /data modify storage minecraft:test str set value "Hello" <br>
+                    //sets the storage variable str to "Hello" <br> <br>
+                    /tellraw @p {"nbt":"str","storage":"test"} <br>
+                    //prints Hello <br>
+                </code> <br>
+                This tellraw command fetches the value associated with that NBT rather than hardcoding it into the command. <br> 
+                <img src="tellraw.png" alt="">
+                <br>
+                Multiple NBT values can be defined. For example, in a sign, "Hello" will be displayed twice by this command:
+                <code class='prettyprint'>
+                    /data modify block x y z Text1 set value "[\"\",{\"nbt\":\"str\",\"storage\":\"test\"},{\"nbt\":\"str\",\"storage\":\"test\"}]"
+                </code>
+                <img src="sign.png" alt=""> <br> <br>
+                When then running a data get command, you'll see that the value stored in Text1 is as follows: <br>
+                <img src="signText1.png" alt=""> <br> 
+                This is how minecraft stores these fake concatenations. <br>
+                A more robust version of this is interpreting the char array directly into a written book. <br> 
+                <br>
+                Say you have the storage variable foo that is equal to ["a","b","c"]. <br>
+                <img src="chararrayfoo.png" alt="">
+                Running this command will give a written book that says "abc": <br>
+                <code class='prettyprint'>
+                    /give @p written_book{pages:["{\"nbt\":\"foo\",\"storage\":\"test\",\"interpret\":true}"],title:"Custom Book",author:Player}
+                </code>
+                <img src="writtenbook.png" alt="">
+                <br> and the data stored in this book is 
+                <img src="pagedatainbook.png" alt=""> <br> 
+                <br>
+                This format is used for most visual texts. It can be displayed in:
+                <ul>
+                    <li>
+                        item names and lore
+                    </li>
+                    <li>
+                        entity customnames
+                    </li>
+                    <li>
+                        tellraw
+                    </li>
+                    <li>
+                        titles (including actionbar, title, and subtitle)
+                    </li>
+                    <li>
+                        signs
+                    </li>
+                    <li>
+                        written books
+                    </li>
+                    <li>
+                        bossbar
+                    </li>
+                </ul>
+            </p>
+            <h4>
+                Why all this matters
+            </h4>
+            <p>
+                It's recommended to know what's going on behind the scenes as there is some inconsistent behavior with Dstrings. <br>
+                For example:
+                <code class='prettyprint'>
+                    Dstring name = "Steve"; <br> //The char array ["S","t","e","v","e"] is stored <br> 
+                    <br>
+                    Zombie zomb = Zombie(); <br> //Spawns a default Zombie at (0,0,0) <br> 
+                    <br>
+                    zomb.name = name; <br> //zomb's display name is "Steve". 
+                    <br>//The data stored in CustomName is actually '{"extra":[{"text":"t"},{"text":"e"},{"text":"v"},{"text":"e"}],"text":"S"}'
+                    
+
+                </code>
+            </p>
+
+        </section>
+    </div>
+    </body>
+    <script type='text/javascript' src="main.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+    <script src="https://code.iconify.design/1/1.0.4/iconify.min.js">   </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans">
+    <link rel="stylesheet" href="styles.css">
+    <div id="sidebar" class="sidebar">
+
+    </div>
+    <body>
+        <div class='body'>
+        <section>
+            <h2 id="primitives">
+                Primitives
+            </h2>
+            <h3>
+                Ugh ugh
+            </h3>
+            <p>
+                Every primitive has both a Runtime and Compiletime variant. Compiletime primitives can be cast as Runtime primitives, but not the other way around. <br>
+                As you might expect, runtime variables and compiletime variables do not mix. <br>
+                <code  class="prettyprint">
+                    Rint runtimeVariable = 1; <br>
+                    Cint compiletimeVariable = 2; <br> <br>
+
+                    <code class="prettyprint error" >
+                        print(runtimeVariable + compiletimeVariable);
+                    </code> 
+                    <br>
+                    //this isn't allowed <br> <br>
+
+                    print(runtimeVariable + Rint(compiletimeVariable)); <br>
+                    //prints 3 <br> 
+                    //It takes a snapshot of the value of 'compiletimeVariable' and <br> 
+                    //the compiler adds it to a list of constants that are declared when the datapack is loaded. <br>
+                    //compiletimeVariable remains a compiletime variable <br> <br>
+
+                    compiletimeVariable ++; <br>
+
+
+                    print(compiletimeVariable = Rint(compiletimeVariable)); <br>
+                    //compiletimeVariable is now of type Rint, and all operations done to it will happen at runtime.  <br>
+                    //this is allowed because cint and Rint are both numbers and thus can be cast implicitly
+
+
+
+                </code> <br>
+                Here's a quick list of every builtin Primitive for reference
+            </p>
+            <ul>
+                <li>
+                    Rint
+                </li>
+                <li>
+                    Cint
+                </li>
+                <li>
+                    Rfloat
+                </li>
+                <li>
+                    Cfloat
+                </li>
+                <li>
+                    Rstring
+                </li>
+                <li>
+                    Cstring
+                </li>
+                <li>
+                    Rlist
+                </li>
+                <li>
+                    Clist
+                </li>
+
+            </ul>
+        </section>
+
+        
+
+        
+        
+        
+
+        
+        
+        
+    </div>
+    </body>
+    <script type='text/javascript' src="main.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</html>
