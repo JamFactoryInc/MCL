@@ -1,2 +1,2 @@
 # MCL
-Open source compiler for Minecraft Datapacks based on Java
+Open source compiler for Minecraft Datapacks based on a hybrid of C# and Python
