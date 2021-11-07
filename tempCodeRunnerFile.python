@@ -1,0 +1,19 @@
+items = [1,6,4,3,8,3,2,8,6,3,1,0,9,7,3,4,5,3,4,8,2]
+
+def uniq(items):
+    return list(set(items))
+
+def uniq2(items):
+    item_dict = {}
+    for i in items:
+        item_dict[i] = None
+    return list(item_dict.keys())
+
+def uniq3(items):
+    new_items = [items[0]] #1
+    for i in items: # n
+        if i != new_items[-1]: # 2
+            new_items.append(i) #1
+    return new_items
+
+print(uniq(items), uniq2(items), uniq3(sorted(items)))
