@@ -1,31 +1,33 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        
-        <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-        <script src="https://code.iconify.design/1/1.0.4/iconify.min.js"></script>
-        
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans">
-        
-    </head>
-    <body>
+
+<head>
+
+    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+    <script src="https://code.iconify.design/1/1.0.4/iconify.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans">
+
+</head>
+
+<body>
     <div id="titlepage">
         <img src="logo.png" alt="">
         <h1>
             Minecraft Command Language
         </h1>
-        
+
     </div>
 
-        <div id="sidebar" class="sidebar">
+    <div id="sidebar" class="sidebar">
 
-        </div>
+    </div>
 
     <div class='body index'>
-        
+
         <section>
-            
+
             <h1 id="desc">
                 Welcome to MCL
             </h1>
@@ -33,53 +35,62 @@
                 What is MCL?
             </h2>
             <p>
-                MCL is is a language designed to be intuitive, consistent, and concise. <br>
-                Most of it is a hybrid of C# and Python with a few extra sprinkles here and there. <br>
-                <br>
-                MCL is compiled into a standard Datapack. No mods, no nonsense. <br> <br>
-
-                MCL allows the user to use a high-level language to write Datapacks instead of wrangling the normal commands in a txt file.
+                MCL is a datapack generator program that reads python code <br> No mods, no new languages or syntax, no nonsense. <br> <br> MCL allows the user to use python to define complex behavior that is difficult to manage with obtuse datapack syntax.
             </p>
 
             <h2>
-                Runtime variables
+                Runtime over Compile Time
             </h2>
             <p>
-                You heard me. I've spent a long time allowing as much runtime functionality as absolutely possible. <br>
-                Summoning 100 Zombies named "Zombie 0" to "Zombie 100" is as easy as 
-                <code class='prettyprint'>
-                    for i in 100 <br>
-                    { <br>
-                        Zombie z = Zombie(); <br>
-                        z.name = "Zombie " + i; <br>
-                    }
-                </code>
+                MCL was built to allow for as much runtime functionality as possible.<br>If you're unclear, runtime is undefined behavior. For example:
+                <code class='prettyprint'>user_input = input()
+print(user_input)</code> There's no way to make this work unless you define the variable <code class='inline'>user_input</code> at runtime. <br> On the other hand, compile-time is pre-defined behavior. Such as:
+                <code class='prettyprint'>print(1+2)</code> This will always print 3, and so there is no need to ever add 1 and 2. All that is compiled is the equivalent of <code class='inline'>print(3)</code>
             </p>
 
-            <h2>
-                The "It just works" mentality is dumb
-            </h2>
-            <p>
-                While giving the user the highest level of abstraction away from the actual commands, MCL retains the ability to inject commands inline for those hands-on vets among you,
-                as well as having a clear distinction between runtime and compiletime values.
-            </p>
 
             <h2>
-                Trident
+                Why Choose MCL
             </h2>
             <p>
-                <a href="https://energyxxer.com/trident/" class='link' target="_blank">Trident</a> is a language that was developed by
-                 <a href="https://twitter.com/Energyxxer" class='link' target="_blank">Energyxxer</a> for the same purpose as MCL. <br> 
-                 It's a Datapack language. <br>
-                 I've tried it and it's not for me. The reason I didn't want to learn Trident was its complexity and its lack of runtime variables. <br>
-                 Everything else about it is great, and I recommend giving it a look
+                There are reasons to and not to use MCL. Here are some pros and cons:
+                <h4>
+                    Pros
+                </h4>
+                <ul>
+                    <li>
+                        MCL is loosely-typed and supports many data types
+                    </li>
+                    <li>
+                        MCL uses identical syntax to python (with some necessary amendments)
+                    </li>
+                    <li>
+                        Performance aside, essentially anything possible in vanilla python is possible in MCL
+                    </li>
+                </ul>
+                <h4>
+                    Cons
+                </h4>
+                <ul>
+                    <li>
+                        MCL is not as efficient. Many nbt operations are done in order to allow for runtime capability and these are more expensive
+                    </li>
+                    <li>
+                        MCL is abstracted away from the commands. While command injection/direct manipulation is supported and encouraged, the resulting datapack will be essentially nonsense and hard to edit yourself if you wish to make changes outside of the MCL coding env
+                    </li>
+                    <li>
+                        MCL is young and only maintained by one developer. Some day support and updates may stop if I become too busy or am otherwise unable
+                    </li>
+
+                </ul>
             </p>
         </section>
-        
 
-        
+
+
     </div>
 </body>
 <script type='text/javascript' src="main.js"></script>
 <link rel="stylesheet" href="styles.css">
+
 </html>

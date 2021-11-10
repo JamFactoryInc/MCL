@@ -1,10 +1,14 @@
 from __future__ import print_function
 from types import CodeType
-import byte_code, dis
+import dis
 from typing import List, Dict, Optional, Tuple
 
 WRITE_DIR = r"C:\Users\jam\AppData\Roaming\.minecraft\saves\MCL Testing\datapacks\mcl\data\mcl\functions"
-WRITE_DATAPACK = False
+WRITE_DATAPACK = True
+USE_EXPERIMENTAL_DIMENSIONS = True
+
+
+array_world = "mcl:mcl/void" if USE_EXPERIMENTAL_DIMENSIONS else "minecraft:overworld"
 
 """
 * Optimizations:
@@ -28,6 +32,11 @@ replicate:
 i = 1
 i = 2
 * saves 1 command per instance
+
+store all methods by type rather than together in method_invoker or special_method_invoker. Be sure to create maximum granularity in order to save the most per call
+*saves up to n execute if calls per call
+
+Scan for all constant operations and bake them in. E.g. it's many times more efficient to hardcode [1,2,3][1] than load a const and use dynamic indexing
 """
 
 """
@@ -35,21 +44,37 @@ i = 2
 if FOR_ITER is the instruction after a jump e.g. a for loop or if statement,
 it could falsely start a for loop, as only is_jump_target=True is checked when making a for loop
 
-if something is done inside a function call, it injects another instruction (or more) between the function and the load_name
-another method of determining the name of the called function is required
+Loading consts like 0.1 causes issues. It is read as [0,1] and therefore has len 2, messing shit up.
 """
 
-GLOBALS = ['print', 'select']
-GLOBAL_METHODS = ['str', 'len']
+GLOBALS = ['print', 'select', 'type', 'str', 'len']
+SPECIAL_METHODS = ['__str__', '__len__', '__mul__', '__eq__', '__add__', '__sub__', '__div__', '__repr__']
 queued_ends = []
+building_literal_function = False
+literal_function = []
+select_tags = 0
+co_names_index_to_select_tags = {}
+
+
+def get_bytecode(filename: str) -> dis.Bytecode:
+    # get source code from module and compile
+    with open(filename, 'r', encoding='utf-8') as infile:
+        code = compile(source=infile.read(), filename=filename, mode='exec')
+
+    # retrieve bytecode from compiled source
+    return dis.Bytecode(code)
 
 def numeric_to_value(number):
+    """Formats a numeric to an nbt value in the format 12.3 -> {dec:1,num:[1,2,3],pol:1,raw:123}
+    """
     sign = 1 if number > 0 else -1
     num = abs(number)
     dec = len(str(num)) - len(str(int(num))) - 1
-    return f"{{dec:{dec if type(number) == float else 0},num:{[int(d) for d in str(num) if d != '.']},pol:{sign},base:10}}"
+    return f"{{dec:{dec if type(number) == float else 0},num:{[int(d) for d in str(num) if d != '.']},pol:{sign},raw:{''.join([d for d in str(num) if d != '.'])}}}"
 
 def list_to_value(list):
+    """Formats a list or tuple to a string repr of an nbt array
+    """
     ret = '['
     for v in list:
         if type(v) == int or type(v) == float:
@@ -93,20 +118,31 @@ load_fn = Function("load")
 load_fn.add_lines(["data modify storage mcl:main stack set value [[]]",
                    "data modify storage mcl:main co_names set value []",
                    "data remove storage mcl:main temp",
+                   "scoreboard objectives add val dummy",
+                   "scoreboard objectives add dec dummy",
+                   "scoreboard objectives add pol dummy",
+                   "scoreboard objectives add ord dummy",
+                   "scoreboard objectives add len dummy",
+                   "scoreboard players set 10 val 10",
+                   "scoreboard players set 0 val 0",
+                   "scoreboard players set 1 val 1",
+                   "scoreboard players set 9 val 9",
+                   "scoreboard players set -1 val -1",
+                   "execute in mcl:mcl/void run forceload add 0 0",
                    'tellraw @a {"text":"Reloaded and ready to rock","italic":true,"color":"green"}',
                    "kill @e[tag=read_head, type=minecraft:marker]",
-                   "execute in mcl:mcl/void run summon minecraft:marker 0 0 0 {Tags:['read_head']}",
+                   f"execute in {array_world} run summon minecraft:marker 0 0 0 {{Tags:['read_head']}}",
                    "# set up array to help turn numbers into strings",
-                   'execute in mcl:mcl/void unless block 0 0 0 minecraft:dropper run setblock 0 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"0"}}]}',
-                   'execute in mcl:mcl/void unless block 1 0 0 minecraft:dropper run setblock 1 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"1"}}]}',
-                   'execute in mcl:mcl/void unless block 2 0 0 minecraft:dropper run setblock 2 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"2"}}]}',
-                   'execute in mcl:mcl/void unless block 3 0 0 minecraft:dropper run setblock 3 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"3"}}]}',
-                   'execute in mcl:mcl/void unless block 4 0 0 minecraft:dropper run setblock 4 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"4"}}]}',
-                   'execute in mcl:mcl/void unless block 5 0 0 minecraft:dropper run setblock 5 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"5"}}]}',
-                   'execute in mcl:mcl/void unless block 6 0 0 minecraft:dropper run setblock 6 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"6"}}]}',
-                   'execute in mcl:mcl/void unless block 7 0 0 minecraft:dropper run setblock 7 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"7"}}]}',
-                   'execute in mcl:mcl/void unless block 8 0 0 minecraft:dropper run setblock 8 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"8"}}]}',
-                   'execute in mcl:mcl/void unless block 9 0 0 minecraft:dropper run setblock 9 0 0 minecraft:dropper{Items:[{Count:1b,Slot:0b,id:"minecraft:paper",tag:{num_to_str:"9"}}]}'])
+                   f'execute in {array_world} unless block 0 0 0 minecraft:dropper run setblock 0 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"0"}}}}]}}',
+                   f'execute in {array_world} unless block 1 0 0 minecraft:dropper run setblock 1 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"1"}}}}]}}',
+                   f'execute in {array_world} unless block 2 0 0 minecraft:dropper run setblock 2 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"2"}}}}]}}',
+                   f'execute in {array_world} unless block 3 0 0 minecraft:dropper run setblock 3 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"3"}}}}]}}',
+                   f'execute in {array_world} unless block 4 0 0 minecraft:dropper run setblock 4 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"4"}}}}]}}',
+                   f'execute in {array_world} unless block 5 0 0 minecraft:dropper run setblock 5 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"5"}}}}]}}',
+                   f'execute in {array_world} unless block 6 0 0 minecraft:dropper run setblock 6 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"6"}}}}]}}',
+                   f'execute in {array_world} unless block 7 0 0 minecraft:dropper run setblock 7 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"7"}}}}]}}',
+                   f'execute in {array_world} unless block 8 0 0 minecraft:dropper run setblock 8 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"8"}}}}]}}',
+                   f'execute in {array_world} unless block 9 0 0 minecraft:dropper run setblock 9 0 0 minecraft:dropper{{Items:[{{Count:1b,Slot:0b,id:"minecraft:paper",tag:{{num_to_str:"9"}}}}]}}'])
 
 Function.active = load_fn
 
@@ -115,24 +151,17 @@ prev_calls = []
 
 invoker = Function("util\\invoker")
 method_invoker = Function("util\\method_invoker")
-method_invoker.add_lines(
-    [f'execute if data storage mcl:main temp.instance{{type:"list"}} if data storage mcl:main temp.callable{{value:"append", type:"callable"}} run function mcl:methods/list_append',
-     f'execute if data storage mcl:main temp.instance{{type:"list"}} if data storage mcl:main temp.callable{{value:"len", type:"callable"}} run function mcl:methods/list_len'])
+special_method_invoker = Function("util\\special_method_invoker")
+global_method_invoker = Function("util\\global_method_invoker")
 
-def start_method(name):
-    method_type, method_name = name.split('_')
-    method_invoker.add_lines(
-        [f'execute if data storage mcl:main temp.instance{{type:"{method_type}"}} if data storage mcl:main temp.callable{{value:"{method_name}"}} run function mcl:methods/{name}'])
-    method = Function("methods\\" + name)
-    Function.active = method
 
-list_append = Function("methods\\list_append")
-list_append.add_lines(["data modify storage mcl:main temp.instance.value append from storage mcl:main temp.args[0].value",
-                       "data modify storage mcl:main stack[0] prepend from storage mcl:main temp.instance"])
+# list_append = Function("methods\\list_append")
+# list_append.add_lines(["data modify storage mcl:main temp.instance.value append from storage mcl:main temp.args[0].value",
+#                        "data modify storage mcl:main stack[0] prepend from storage mcl:main temp.instance"])
 
-list_len = Function("methods\\list_len")
-list_len.add_lines(
-    ["data modify storage mcl:main stack[0] prepend value {value:['n','o']}"])
+# list_len = Function("methods\\list_len")
+# list_len.add_lines(
+#     ["data modify storage mcl:main stack[0] prepend value {value:['n','o']}"])
 
 def not_implemented(feature : str, line: int):
     print(
@@ -149,7 +178,8 @@ def remove_line():
     Function.active.lines.pop()
 
 def add_lines_init(lines : List[str]):
-    load_fn.add_lines(lines)
+    for line in lines:
+        load_fn.lines.insert(0, line)
 
 def queue_end_on_instr(line):
     queued_ends.append(line)
@@ -164,7 +194,47 @@ def start_fn(fn_name, num_args):
 
 def add_fn(fn_name):
     global invoker
-    invoker.add_lines([f'execute if data storage mcl:main temp.callable{{value:"{fn_name}", type:"callable"}} run function mcl:user_functions/{fn_name}'])
+    invoker.add_lines([f'execute if data storage mcl:main temp.callable{{value:"{fn_name}", type:{{name:"callable"}}}} run function mcl:user_functions/{fn_name}'])
+
+
+def start_method(name):
+    """For methods like append, add, split etc.
+    This is apart from start_special_method to improve efficiency
+    """
+    method_type, method_name = name.split('.')
+    method_invoker.add_lines(
+        [f'execute if data storage mcl:main temp.instance{{type:{{name:"{method_type}"}}}} if data storage mcl:main temp.callable{{value:"{method_name}"}} run function mcl:methods/{name}'])
+    method = Function("methods\\" + name)
+    Function.active = method
+    return method
+
+
+def start_special_method(name, type_arg = 0):
+    """For methods like __str__, __repr__, __mul__, etc.
+    This is apart from start_method to improve efficiency
+    """
+    method_type, method_name = name.split('.')
+    special_method_invoker.add_lines(
+        [f'execute if data storage mcl:main stack[0][{type_arg}].type{{name:"{method_type}"}} if data storage mcl:main temp{{callable:"{method_name}"}} run function mcl:special_methods/{name}'])
+    method = Function("special_methods\\" + name)
+    Function.active = method
+    return method
+
+
+def start_global_method(name):
+    """For methods like type(), print(), exec(), etc.
+    This is apart from start_method to improve efficiency
+    """
+    invoker.add_lines(
+        [f'execute if data storage mcl:main temp.callable{{value:"{name}"}} run function mcl:user_functions/{name}'])
+    method = Function("user_functions\\" + name)
+    Function.active = method
+    return method
+
+def start_util_function(name):
+    fn = Function("util\\" + name)
+    Function.active = method
+    return fn
 
 def start_while(condition : str):
     """Executes lines as long as the execute if condition returns true
@@ -180,15 +250,412 @@ def start_while(condition : str):
                       condition + f" function mcl:util/fn{index}",])
     Function.active = new_fn
 
+
+def do_while(condition: str):
+    """Executes lines as long as the execute if condition returns true
+
+    Args:
+        lines (List[str]): lines to loop over
+        condition (str): condition to loop until false
+    """,
+    index = Function.index
+    Function.active.add_lines([f"function mcl:util/fn{index}"])
+    new_fn = Function(f"util\\fn{index}", parent_fn=Function.active, end_lines=[
+                      "# Recursively call function to emulate loop",
+                      condition + f" function mcl:util/fn{index}", ])
+    Function.active = new_fn
+
 def start_if(condition:str):
     index = Function.index
     Function.active.add_lines([condition + f" function mcl:util/fn{index}"])
     new_fn = Function(f"util\\fn{index}", parent_fn=Function.active)
     Function.active = new_fn
 
-def compile(filename:str, code_obj = None):
-    global prev_calls
-    bytecode = iter(byte_code.get_bytecode(filename)
+
+method = start_method("list.append")
+method.add_lines(["data modify storage mcl:main temp.instance.value append from storage mcl:main temp.args[0].value",
+                  "data modify storage mcl:main stack[0] prepend from storage mcl:main temp.instance"])
+end()
+
+method = start_global_method('str')
+add_lines(
+    ['data modify storage mcl:main temp.callable set value "__str__"',
+     "function mcl:util/special_method_invoker",
+     'data modify storage mcl:main stack[1] prepend from storage mcl:main stack[0][0]'])
+
+method = start_global_method('type')
+add_lines(
+    ['data modify storage mcl:main stack[1] prepend value {value:[], type:{name:"immutable_str"}}',
+     'data modify storage mcl:main stack[1][0].value append from storage mcl:main stack[0][0].type.name',
+     'data remove storage mcl:main stack[0]'
+     ])
+
+# ! make print accept multiple args
+method = start_global_method('print')
+add_lines(["# format TOS into string if TOS is a number",
+           'data modify storage mcl:main temp.callable set value "__str__"',
+            "function mcl:util/special_method_invoker",
+            'tellraw @p {"nbt":"stack[0][0].value","storage":"mcl:main","interpret":true}',
+            'data modify storage mcl:main stack[1] prepend value {value:"None", type:{name:"NoneType"}}',
+            "data remove storage mcl:main stack[0]"])
+
+method = start_special_method("list.__len__")
+method.add_lines([
+    "execute store result score #mcl1 val run data get storage mcl:main stack[0][0].value",
+    "function mcl:util/from_scoreboard",
+    'data remove storage mcl:main stack[0][1]'])
+end()
+
+# method = start_special_method("list.str")
+# add_lines(
+#     ['data modify storage mcl:main stack[0] prepend value {value:[],type:{name:"str"}}',
+#      'data modify storage mcl:main temp set value {value:"repr"}',
+#      "function mcl:util/special_method_invoker"])
+# start_while("execute if data storage mcl:main stack[0][] run")
+
+# end()
+# end()
+
+method = start_special_method("str.__len__")
+method.add_lines([
+    "execute store result score #mcl1 val run data get storage mcl:main stack[0][0].value",
+    "function mcl:util/from_scoreboard",
+    'data remove storage mcl:main stack[0][1]'])
+end()
+
+fn = start_special_method("str.__add__")
+#load top 2 from stack to #mcl0 and #mcl1
+fn.add_lines(["data modify storage mcl:main stack[0][1].value append from storage mcl:main stack[0][0].value[]",
+              "data remove storage mcl:main stack[0][0]"])
+
+fn = start_special_method("str.__mul__", 1)
+#load top 2 from stack to #mcl0 and #mcl1
+add_lines(["function mcl:util/to_scoreboard",
+           "data modify storage mcl:main temp set from storage mcl:main stack[0][1].value"])
+start_while("execute if score #mcl0 val matches 2.. run")
+add_lines(["scoreboard players remove #mcl0 val 1",
+           "data modify storage mcl:main temp append from storage mcl:main stack[0][1].value[]"])
+end()
+add_lines(["data modify storage mcl:main stack[0][1].value set from storage mcl:main temp",
+           "data remove storage mcl:main stack[0][0]"])
+
+fn = start_special_method("float.__mul__")
+#load top 2 from stack to #mcl0 and #mcl1
+fn.add_lines(["function mcl:util/to_scoreboard_two",
+              # mul raw values
+              "scoreboard players operation #mcl1 val *= #mcl0 val",
+              # add dec to correct for decimal multiplication
+              "scoreboard players operation #mcl1 dec += #mcl0 dec",
+              # push result to stack from scoreboard
+              "function mcl:util/from_scoreboard",
+              "data remove storage mcl:main stack[0][1]"])
+
+fn = start_special_method("float.__add__")
+#load top 2 from stack to #mcl0 and #mcl1
+add_lines(["function mcl:util/to_scoreboard_two",
+           # store len values
+           "execute store result score #mcl0 len run data get storage mcl:main stack[0][0].value.num",
+           "execute store result score #mcl1 len run data get storage mcl:main stack[0][1].value.num"])
+add_lines(["scoreboard players operation #temp val = #mcl1 dec",
+           "scoreboard players operation #temp val -= #mcl0 dec"])
+# Check which number has a higher order
+start_if("execute if score #temp val >= 0 val run")
+# align decimal place of #mcl0 with #mcl1
+
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl0 val *= 10 val"])
+end()
+# do addition
+add_lines(["scoreboard players operation #mcl0 val += #mcl1 val",
+           "scoreboard players operation #mcl1 val = #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+add_lines(["scoreboard players operation #temp val = #mcl0 dec",
+           "scoreboard players operation #temp val -= #mcl1 dec"])
+start_if("execute if score #temp val > 0 val run")
+# align decimal place of #mcl0 with #mcl1
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl1 val *= 10 val"])
+end()
+# do addition
+add_lines(["scoreboard players operation #mcl1 val += #mcl0 val",
+           "scoreboard players operation #mcl1 dec = #mcl0 dec",
+           "function mcl:util/from_scoreboard"])
+end()
+end()
+
+fn = start_special_method("float.__sub__")
+add_lines(["function mcl:util/to_scoreboard_two",
+           # store len values
+           "execute store result score #mcl0 len run data get storage mcl:main stack[0][0].value.num",
+           "execute store result score #mcl1 len run data get storage mcl:main stack[0][1].value.num"])
+add_lines(["scoreboard players operation #temp val = #mcl1 dec",
+           "scoreboard players operation #temp val -= #mcl0 dec"])
+# Check which number has a higher order
+start_if("execute if score #temp val >= 0 val run")
+# align decimal place of #mcl0 with #mcl1
+
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl0 val *= 10 val"])
+end()
+# do subtraction
+add_lines(["scoreboard players operation #mcl1 val -= #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+add_lines(["scoreboard players operation #temp val = #mcl0 dec",
+           "scoreboard players operation #temp val -= #mcl1 dec"])
+start_if("execute if score #temp val > 0 val run")
+# align decimal place of #mcl0 with #mcl1
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl1 val *= 10 val"])
+end()
+# do subtraction
+add_lines(["scoreboard players operation #mcl1 val -= #mcl0 val",
+           "scoreboard players operation #mcl1 dec = #mcl0 dec",
+           "function mcl:util/from_scoreboard"])
+end()
+end()
+
+
+fn = start_special_method("float.__div__")
+#load top 2 from stack to #mcl0 and #mcl1
+fn.add_lines(["function mcl:util/to_scoreboard_two",
+              # store len values
+              "execute store result score #mcl1 len run data get storage mcl:main stack[0][1].value.num",
+              # 2^31 has an order of 9
+              "scoreboard players set #temp val 9",
+              # find the highest order without losing information
+              "scoreboard players operation #temp val -= #mcl1 len"])
+
+# make mcl1 have the highest-possible order without overflowing
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl1 val *= 10 val"])
+end()
+# do division
+add_lines(["scoreboard players operation #mcl1 val /= #mcl0 val",
+           # calc resulting dec
+           "scoreboard players operation #mcl1 dec += 9 val",
+           "scoreboard players operation #mcl1 dec -= #mcl1 len",
+           "scoreboard players operation #mcl1 dec -= #mcl0 dec",
+           "function mcl:util/from_scoreboard"])
+end()
+
+fn = start_special_method("int.__mul__")
+add_lines(["function mcl:util/to_scoreboard_two",
+           "scoreboard players operation #mcl1 val *= #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+
+fn = start_special_method("int.__add__", 1)
+start_if('execute if data storage mcl:main stack[0][0].type{name:"int"} run')
+add_lines(["function mcl:util/to_scoreboard_two",
+           "scoreboard players operation #mcl1 val += #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+start_if('execute if data storage mcl:main stack[0][0].type{name:"float"} run')
+add_lines(["function mcl:util/to_scoreboard_two",
+              # store len values
+              "execute store result score #mcl0 len run data get storage mcl:main stack[0][0].value.num",
+              "execute store result score #mcl1 len run data get storage mcl:main stack[0][1].value.num"])
+add_lines(["scoreboard players operation #temp val = #mcl1 dec",
+           "scoreboard players operation #temp val -= #mcl0 dec"])
+# Check which number has a higher order
+start_if("execute if score #temp val >= 0 val run")
+# align decimal place of #mcl0 with #mcl1
+
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl0 val *= 10 val"])
+end()
+# do addition
+add_lines(["scoreboard players operation #mcl0 val += #mcl1 val",
+           "scoreboard players operation #mcl1 val = #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+add_lines(["scoreboard players operation #temp val = #mcl0 dec",
+           "scoreboard players operation #temp val -= #mcl1 dec"])
+start_if("execute if score #temp val > 0 val run")
+# align decimal place of #mcl0 with #mcl1
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl1 val *= 10 val"])
+end()
+# do addition
+add_lines(["scoreboard players operation #mcl1 val += #mcl0 val",
+           "scoreboard players operation #mcl1 dec = #mcl0 dec",
+           "function mcl:util/from_scoreboard"])
+end()
+end()
+end()
+
+fn = start_special_method("int.__sub__", 1)
+start_if('execute if data storage mcl:main stack[0][0].type{name:"int"} run')
+add_lines(["function mcl:util/to_scoreboard_two",
+           "scoreboard players operation #mcl1 val -= #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+start_if('execute if data storage mcl:main stack[0][0].type{name:"float"} run')
+add_lines(["function mcl:util/to_scoreboard_two",
+              # store len values
+              "execute store result score #mcl0 len run data get storage mcl:main stack[0][0].value.num",
+              "execute store result score #mcl1 len run data get storage mcl:main stack[0][1].value.num"])
+add_lines(["scoreboard players operation #temp val = #mcl1 dec",
+           "scoreboard players operation #temp val -= #mcl0 dec"])
+# Check which number has a higher order
+start_if("execute if score #temp val >= 0 val run")
+# align decimal place of #mcl0 with #mcl1
+
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl0 val *= 10 val"])
+end()
+# do subtraction
+add_lines(["scoreboard players operation #mcl1 val -= #mcl0 val",
+           "function mcl:util/from_scoreboard"])
+end()
+add_lines(["scoreboard players operation #temp val = #mcl0 dec",
+           "scoreboard players operation #temp val -= #mcl1 dec"])
+start_if("execute if score #temp val > 0 val run")
+# align decimal place of #mcl0 with #mcl1
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl1 val *= 10 val"])
+end()
+# do subtraction
+add_lines(["scoreboard players operation #mcl1 val -= #mcl0 val",
+           "scoreboard players operation #mcl1 dec = #mcl0 dec",
+           "function mcl:util/from_scoreboard"])
+end()
+end()
+end()
+
+
+fn = start_special_method("int.__div__")
+#load top 2 from stack to #mcl0 and #mcl1
+fn.add_lines(["function mcl:util/to_scoreboard_two",
+              # store len values
+              "execute store result score #mcl1 len run data get storage mcl:main stack[0][1].value.num",
+              # 2^31 has an order of 9
+              "scoreboard players set #temp val 9",
+              # find the highest order without losing information
+              "scoreboard players operation #temp val -= #mcl1 len"])
+
+# make mcl1 have the highest-possible order without overflowing
+start_while("execute if score #temp val matches 1.. run")
+add_lines(["scoreboard players remove #temp val 1",
+           "scoreboard players operation #mcl1 val *= 10 val"])
+end()
+# do division
+add_lines(["scoreboard players operation #mcl1 val /= #mcl0 val",
+           # calc resulting dec
+           "scoreboard players operation #mcl1 dec += 9 val",
+           "scoreboard players operation #mcl1 dec -= #mcl1 len",
+           "scoreboard players operation #mcl1 dec -= #mcl0 dec",
+           "function mcl:util/from_scoreboard"])
+
+end()
+
+fn = start_special_method("int.__str__")
+add_lines(
+    ["data modify storage mcl:main temp set value [[]]",
+        "data modify storage mcl:main temp append from storage mcl:main stack[0][0].value.num",
+        "execute if data storage mcl:main stack[0][0].value{pol:-1} run data modify storage mcl:main temp[0] append value '-'"])
+start_while(
+    "execute if data storage mcl:main temp[1][0] run")
+add_lines(
+    ["execute store result entity @e[type=marker,tag=read_head,limit=1] Pos[0] double 1 run data get storage mcl:main temp[1][0] 1",
+        "execute at @e[type=minecraft:marker,limit=1,tag=read_head] run data modify storage mcl:main temp[0] append from block ~ ~ ~ Items[0].tag.num_to_str",
+        "data remove storage mcl:main temp[1][0]"])
+end()
+add_lines(
+    ["data modify storage mcl:main stack[0][0].value set from storage mcl:main temp[0]"])
+
+fn = start_special_method("float.__str__")
+add_lines(
+    ["data modify storage mcl:main temp set value [[]]",
+        "data modify storage mcl:main temp append from storage mcl:main stack[0][0].value.num",
+        "execute store result score #temp len run data get storage mcl:main stack[0][0].value.num",
+        "execute store result score #temp dec run data get storage mcl:main stack[0][0].value.dec",
+        "execute if data storage mcl:main stack[0][0].value{pol:-1} run data modify storage mcl:main temp[0] append value '-'",
+        "execute if score #temp len = #temp dec run data modify storage mcl:main temp[0] append value '0'"])
+start_while(
+    "execute if data storage mcl:main temp[1][0] run")
+add_lines(
+    ["execute store result entity @e[type=marker,tag=read_head,limit=1] Pos[0] double 1 run data get storage mcl:main temp[1][0] 1",
+        'execute if score #temp len = #temp dec run data modify storage mcl:main temp[0] append value "."',
+        "scoreboard players remove #temp len 1",
+        "execute at @e[type=minecraft:marker,limit=1,tag=read_head] run data modify storage mcl:main temp[0] append from block ~ ~ ~ Items[0].tag.num_to_str",
+        "data remove storage mcl:main temp[1][0]"])
+end()
+add_lines(
+    ["data modify storage mcl:main stack[0][0].value set from storage mcl:main temp[0]"])
+
+
+fn = start_util_function("to_scoreboard")
+fn.add_lines(["execute store result score #mcl0 val run data get storage mcl:main stack[0][0].value.raw",
+              "execute store result score #mcl0 pol run data get storage mcl:main stack[0][0].value.pol",
+              "execute store result score #mcl0 dec run data get storage mcl:main stack[0][0].value.dec"])
+end()
+
+fn = start_util_function("to_scoreboard_two")
+fn.add_lines(["execute store result score #mcl0 val run data get storage mcl:main stack[0][0].value.raw",
+              "execute store result score #mcl0 dec run data get storage mcl:main stack[0][0].value.dec",
+              "execute store result score #mcl1 val run data get storage mcl:main stack[0][1].value.raw",
+              "execute store result score #mcl1 dec run data get storage mcl:main stack[0][1].value.dec"])
+end()
+
+fn = start_util_function("from_scoreboard")
+Function.active = fn
+fn.add_lines(
+    ["execute if score #mcl1 dec matches 1.. run data modify storage mcl:main stack[0][0] set value {value:{num:[],pol:1,raw:0,dec:0},type:{name:\"float\"}}",
+     "execute if score #mcl1 dec matches 0 run data modify storage mcl:main stack[0][0] set value {value:{num:[],pol:1,raw:0,dec:0},type:{name:\"int\"}}",
+     "execute unless score #mcl1 val matches 0.. run data modify storage mcl:main stack[0][0].value.pol set value -1",
+     "execute store result storage mcl:main stack[0][0].value.dec int 1 run scoreboard players get #mcl1 dec",
+     "execute if score #mcl1 val matches 0 run data modify storage mcl:main stack[0][0].value.num set value [0]",
+     "execute if score #mcl1 val matches ..-1 run scoreboard players operation #mcl1 val *= -1 val",
+     "scoreboard players operation #mcl0 val = #mcl1 val",
+     "scoreboard players operation #mcl0 val %= 10 val",
+     "execute if score #mcl0 val matches 0 run scoreboard players operation #mcl1 val /= 10 val",
+     # temp keeps track of if a non-zero value has been seen. Values are only appended if at least one non-zero has been seen. This makes sure stuff like 2.000000 doesn't happen
+     "scoreboard players set #temp val 0"])
+start_while("execute unless score #mcl1 val matches 0 run")
+Function.active.add_lines(
+    # copy val
+    ["scoreboard players operation #mcl0 val = #mcl1 val",
+     # get ones place from copy
+     "scoreboard players operation #mcl0 val %= 10 val",
+     # set #temp to 1 if a nonzero is seen
+     "execute unless score #mcl0 val matches 0 run scoreboard players set #temp val 1",
+     # if the ones place isn't 0 and stack[0][0].value.raw != 0
+     "execute unless score #mcl0 val matches 0 if data storage mcl:main stack[0][0].value{raw:0} store result storage mcl:main stack[0][0].value.raw int 1 run scoreboard players get #mcl1 val",
+     # remove ones place from original
+     "scoreboard players operation #mcl1 val /= 10 val",
+     # store copy's val in temp
+     "execute store result storage mcl:main temp int 1 run scoreboard players get #mcl0 val",
+     # prepend from temp
+     "execute if score #temp val matches 1.. run data modify storage mcl:main stack[0][0].value.num prepend from storage mcl:main temp"])
+end()
+end()
+
+fn = start_util_function("binary_multiply")
+#load top 2 from stack to #mcl0 and #mcl1
+fn.add_lines(["function mcl:util/to_scoreboard_two",
+              # mul raw values
+              "scoreboard players operation #mcl1 val *= #mcl0 val",
+              # add dec to correct for decimal multiplication
+              "scoreboard players operation #mcl1 dec += #mcl0 dec"])
+
+
+Function.active = load_fn
+
+def compile_datapack(filename:str, code_obj = None):
+    global prev_calls, building_literal_function, literal_function, select_tags, co_names_index_to_select_tags
+    bytecode = iter(get_bytecode(filename)
                     ) if str and not code_obj else iter(dis.Bytecode(code_obj))
 
     current_line = 0
@@ -247,7 +714,7 @@ def compile(filename:str, code_obj = None):
                 # ! this could be made more efficient
                 add_lines(
                     ["data modify storage arr_math:in var1 set from storage mcl:main stack[0][0].value",
-                     "data modify storage arr_math:in var2 set value {dec:0, num:[1,],pol:-1,base:10}",
+                     "data modify storage arr_math:in var2 set value {dec:0, num:[1],pol:-1,base:10}",
                      "function arr_math:call/multiply",
                      "data modify storage mcl:main stack[0][0].value.pol set from storage arr_math:main out"])
             case 12:
@@ -317,11 +784,9 @@ def compile(filename:str, code_obj = None):
                 # 1 2 3 4 5 -> 2*1 3 4 5
                 add_lines(
                     ["# BINARY MULTIPLY",
-                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][0].value",
-                     "data modify storage arr_math:in var2 set from storage mcl:main stack[0][1].value",
-                     "function arr_math:call/multiply",
-                     "data remove storage mcl:main stack[0][0]",
-                     "data modify storage mcl:main stack[0][0].value set from storage arr_math:main out"])
+                     'data modify storage mcl:main temp set value {callable:"__mul__", args:[]}'])
+                add_lines(["function mcl:util/special_method_invoker",
+                           "data remove storage mcl:main stack[0][1]"])
 
             case 22:
                 # BINARY MODULO
@@ -334,43 +799,32 @@ def compile(filename:str, code_obj = None):
                     "# BINARY MODULO",
                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][1].value",
                     "function arr_math:call/scoreboard/export",
-                    "scoreboard players operation #mcl mcl0 = out= arr_math.main",
+                    "scoreboard players operation #mcl0 val = out= arr_math.main",
                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][0].value",
                     "function arr_math:call/scoreboard/export",
-                    "scoreboard players operation #mcl mcl0 %= out= arr_math.main",
+                    "scoreboard players operation #mcl0 val %= out= arr_math.main",
                     "data remove storage mcl:main stack[0][0]",
-                    "scoreboard players operation in= arr_math.main = #mcl mcl0",
+                    "scoreboard players operation in= arr_math.main = #mcl0 val",
                     "function arr_math:call/scoreboard/import",
                     "data modify storage mcl:main stack[0][0].value set from storage arr_math:main out"])
             case 23:
                 # BINARY ADD
                 # TOS = TOS1 + TOS
                 # 1 2 3 4 5 -> 2+1 3 4 5
-                start_if(
-                    "execute if data storage mcl:main stack[0][0].value.num run")
                 add_lines(
-                    ["data modify storage arr_math:in var1 set from storage mcl:main stack[0][0].value",
-                     "data modify storage arr_math:in var2 set from storage mcl:main stack[0][1].value",
-                     "function arr_math:call/add",
-                     "data remove storage mcl:main stack[0][0]",
-                     "data modify storage mcl:main stack[0][0].value set from storage arr_math:main out"])
-                end()
-                start_if(
-                    "execute unless data storage mcl:main stack[0][1].value.num run")
-                add_lines(
-                    ["data modify storage mcl:main stack[0][1].value append from storage mcl:main stack[0][0].value[]",
-                     "data remove storage mcl:main stack[0][0]"])
-                end()
+                    ["# BINARY ADD",
+                     'data modify storage mcl:main temp set value {callable:"__add__", args:[]}'])
+                add_lines(["function mcl:util/special_method_invoker",
+                           "data remove storage mcl:main stack[0][1]"])
             case 24:
                 # BINARY SUBTRACT
                 # TOS = TOS1 - TOS
                 # 1 2 3 4 5 -> 2-1 3 4 5
                 add_lines(
-                    ["data modify storage arr_math:in var1 set from storage mcl:main stack[0][1].value",
-                     "data modify storage arr_math:in var2 set from storage mcl:main stack[0][0].value",
-                     "function arr_math:call/subtract",
-                     "data remove storage mcl:main stack[0][0]",
-                     "data modify storage mcl:main stack[0][0].value set from storage arr_math:main out"])
+                    ["# BINARY SUBTRACT",
+                     'data modify storage mcl:main temp set value {callable:"__sub__", args:[]}'])
+                add_lines(["function mcl:util/special_method_invoker",
+                           "data remove storage mcl:main stack[0][1]"])
             case 25:
                 # BINARY SUBSCR
                 # TOS = TOS1[TOS]
@@ -383,11 +837,11 @@ def compile(filename:str, code_obj = None):
                 add_lines(
                     ["data modify storage mcl:main temp set from storage mcl:main stack[0][1]",
                      "data modify storage mcl:main temp1 set from storage mcl:main stack[0][0].value",
-                     "execute store result score #mcl mcl0 run data get storage mcl:main temp1",
-                     "scoreboard players set #mcl mcl1 0"])
-                start_if("execute if score #mcl mcl0 matches 0.. run")
+                     "execute store result score #mcl0 val run data get storage mcl:main temp1",
+                     "scoreboard players set #mcl1 val 0"])
+                start_if("execute if score #mcl0 val matches 0.. run")
                 start_while("execute if data storage mcl:main temp[0] run")
-                add_lines(["scoreboard players remove #mcl mcl0 1",
+                add_lines(["scoreboard players remove #mcl0 val 1",
                            "data remove storage mcl:main temp[0]"])
                 end()
                 add_lines(
@@ -396,9 +850,9 @@ def compile(filename:str, code_obj = None):
                 end()
 
                 # if index is negative
-                start_if("execute if score #mcl mcl0 matches ..-1 run")
-                start_while("execute unless score #mcl mcl0 matches -1 run")
-                add_lines(["scoreboard players add #mcl mcl0 1",
+                start_if("execute if score #mcl0 val matches ..-1 run")
+                start_while("execute unless score #mcl0 val matches -1 run")
+                add_lines(["scoreboard players add #mcl0 val 1",
                            "data remove storage mcl:main temp[-1]"])
                 end()
                 add_lines(
@@ -415,10 +869,10 @@ def compile(filename:str, code_obj = None):
                 add_lines(
                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][0].value",
                     "function arr_math:call/scoreboard/export",
-                    "scoreboard players operation #mcl mcl0 = out= arr_math.main",
+                    "scoreboard players operation #mcl0 val = out= arr_math.main",
                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][1].value",
                     "function arr_math:call/scoreboard/export",
-                    "scoreboard players operation out= arr_math.main /= #mcl mcl0",
+                    "scoreboard players operation out= arr_math.main /= #mcl0 val",
                     "scoreboard players operation in= arr_math.main = out= arr_math.main",
                     "function arr_math:call/scoreboard/import",
                     "data remove storage mcl:main stack[0][0]",
@@ -428,11 +882,10 @@ def compile(filename:str, code_obj = None):
                 # TOS = TOS1 / TOS
                 # 1 2 3 4 5 -> 2/1 3 4 5
                 add_lines(
-                    ["data modify storage arr_math:in var1 set from storage mcl:main stack[0][1].value",
-                     "data modify storage arr_math:in var2 set from storage mcl:main stack[0][0].value",
-                     "function arr_math:call/divide",
-                     "data remove storage mcl:main stack[0][0]",
-                     "data modify storage mcl:main stack[0][0].value set from storage arr_math:main out"])
+                    ["# BINARY DIVIDE",
+                     'data modify storage mcl:main temp set value {callable:"__div__", args:[]}'])
+                add_lines(["function mcl:util/special_method_invoker",
+                           "data remove storage mcl:main stack[0][1]"])
             case 28:
                 # INPLACE FLOOR DIVIDE
                 # TOS = TOS1 // TOS
@@ -442,10 +895,10 @@ def compile(filename:str, code_obj = None):
                 add_lines(
                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][0].value",
                     "function arr_math:call/scoreboard/export",
-                    "scoreboard players operation #mcl mcl0 = out= arr_math.main",
+                    "scoreboard players operation #mcl0 val = out= arr_math.main",
                     "data modify storage arr_math:in var1 set from storage mcl:main stack[0][1].value",
                     "function arr_math:call/scoreboard/export",
-                    "scoreboard players operation out= arr_math.main /= #mcl mcl0",
+                    "scoreboard players operation out= arr_math.main /= #mcl0 val",
                     "scoreboard players operation in= arr_math.main = out= arr_math.main",
                     "function arr_math:call/scoreboard/import",
                     "data remove storage mcl:main stack[0][0]",
@@ -462,19 +915,10 @@ def compile(filename:str, code_obj = None):
             case 30:
                 # GET LEN
                 # 1 2 3 4 5 -> len(1) 1 2 3 4 5
-                add_lines_init(["scoreboard objectives add mcl0 dummy",
-                                "scoreboard objectives add mcl1 dummy"])
-
                 add_lines(
-                    ["data modify storage mcl:main temp set from storage mcl:main stack[0][0]",
-                     "scoreboard players set #mcl mcl0 0"])
-                start_while("execute if data storage mcl:main temp[0] run")
-                add_lines(["scoreboard players add #mcl 1",
-                            "data remove storage mcl:main temp[0]"])
-                end()
-                add_lines(
-                    ["data modify storage mcl:main stack[0] prepend value [0]",
-                     "execute store result storage mcl:main stack[0][0].value int 1 run scoreboard players get #mcl mcl1"])
+                    ["# GET LEN",
+                     'data modify storage mcl:main temp set value {callable:"__len__", args:[]}'])
+                add_lines(["function mcl:util/special_method_invoker"])
             case 31:
                 # MATCH MAPPING
                 # ! No idea what this is
@@ -538,11 +982,9 @@ def compile(filename:str, code_obj = None):
                 # INPLACE MULTIPLY
                 # TOS = TOS1 * TOS
                 add_lines(
-                    ["data modify storage arr_math:in var1 set from storage mcl:main stack[0][1].value",
-                     "data modify storage arr_math:in var2 set from storage mcl:main stack[0][0].value",
-                     "function arr_math:call/multiply",
-                     "data remove storage mcl:main stack[0][0]",
-                     "data modify storage mcl:main stack[0][0].value set from storage arr_math:main out"])
+                    ["# INPLACE MULTIPLY",
+                     'data modify storage mcl:main temp set value {value:"mul"}',
+                     "function mcl:util/special_method_invoker"])
 
             case 59:
                 # INPLACE MODULO
@@ -723,7 +1165,7 @@ def compile(filename:str, code_obj = None):
             case 84:
                 # IMPORT STAR
                 # This is meta and shouldn't be compiled
-                pass
+                add_lines(['data remove storage mcl:main stack[0][0]'])
             case 85:
                 # SETUP ANNOTATIONS
                 not_implemented('annotations', current_line)
@@ -744,6 +1186,8 @@ def compile(filename:str, code_obj = None):
                 # name = TOS
                 # namei is the index of name in the attribute co_names
                 # FIXME potential issue with scoping
+                if len(co_names_index_to_select_tags.values()) == 0 or select_tags > max(co_names_index_to_select_tags.values()):
+                    co_names_index_to_select_tags[inst.arg] = select_tags
                 add_lines([f"# STORE NAME {inst.argrepr}",
                            f"execute if data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names[{inst.arg}] set from storage mcl:main stack[0][0]",
                            f"execute unless data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names append from storage mcl:main stack[0][0]",
@@ -821,7 +1265,7 @@ def compile(filename:str, code_obj = None):
                 if type(inst.argval) == CodeType:
                     print("\033[94mCompiling embedded code object!\033[0m")
                     start_fn(inst.argval.co_name, inst.argval.co_argcount)
-                    compile('', inst.argval)
+                    compile_datapack('', inst.argval)
                     end()
                     print("\033[94mFinished compiling embedded code object!\033[0m")
                 else:
@@ -831,26 +1275,38 @@ def compile(filename:str, code_obj = None):
                     if type(inst.argval) == str:
                         arg_type = "str"
                         const = str(list(inst.argval))
-                    elif type(inst.argval) == int or type(inst.argval) == float:
-                        arg_type = "num"
+                    elif type(inst.argval) == float:
+                        arg_type = "float"
+                        const = numeric_to_value(inst.argval)
+                    elif type(inst.argval) == int:
+                        arg_type = "int"
                         const = numeric_to_value(inst.argval)
                     elif type(inst.argval) == list or type(inst.argval) == tuple:
                         arg_type = "list"
                         const = list_to_value(inst.argval)
-                    add_lines([f'data modify storage mcl:main stack[0] prepend value {{value:{str(const)}, type:"{arg_type}"}}'])
+                    add_lines([f'data modify storage mcl:main stack[0] prepend value {{value:{str(const)}, type:{{name:"{arg_type}"}}}}'])
             case 101:
                 # LOAD NAME(namei)
                 # pushes the value associated with co_names[namei] onto stack[0]
-                if inst.argrepr not in GLOBALS:
-                    if inst.argrepr in GLOBAL_METHODS:
-                        add_lines([f"# LOAD METHOD {inst.argrepr}",
-                               f'execute if data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names[{inst.arg}] set value {{value:"{inst.argval}",type:"callable"}}',
-                               f'execute unless data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names append value {{value:"{inst.argval}",type:"callable"}}',
-                               f'data modify storage mcl:main stack[0] prepend value {{value:"{inst.argval}",type:"callable"}}'])
-                    else:
+                if not building_literal_function:
+                    if inst.argrepr not in GLOBALS:
                         add_lines(
-                        [f"# LOAD NAME {inst.argrepr}",
-                        f"data modify storage mcl:main stack[0] prepend from storage mcl:main co_names[{inst.arg}]"])
+                            [f"# LOAD NAME {inst.argrepr}",
+                            f"data modify storage mcl:main stack[0] prepend from storage mcl:main co_names[{inst.arg}]"])
+                    else:
+                        if inst.argrepr == 'select':
+                            building_literal_function = True
+                            select_tags += 1
+                            add_lines_init(
+                                [f"scoreboard objectives add tag{select_tags} dummy"])
+                            literal_function = [
+                                "scoreboard players set @e[", f'] tag{select_tags} 1;data modify storage mcl:main stack[0] prepend value {{value:{select_tags}, type:{{name:"entity"}}}}']
+                        else:
+                            add_lines(["# STORE GLOBAL METHOD",
+                                f'execute if data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names[{inst.arg}] set value {{value:"{inst.argval}",type:{{name:"callable"}}}}',
+                                f'execute unless data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names append value {{value:"{inst.argval}",type:{{name:"callable"}}}}',
+                                f"# LOAD NAME {inst.argrepr}",
+                                f"data modify storage mcl:main stack[0] prepend from storage mcl:main co_names[{inst.arg}]"])
 
             case 102:
                 # BUILD TUPLE(count)
@@ -874,7 +1330,7 @@ def compile(filename:str, code_obj = None):
                 if inst.argval:
                     add_lines(
                         [f"# BUILD LIST from top {inst.argval} values",
-                         'data modify storage mcl:main temp set value {value:[],type:"list"}'])
+                         'data modify storage mcl:main temp set value {value:[],type:{name:"list"}}'])
                     for _ in range(inst.argval):
                         add_lines(
                             ["data modify storage mcl:main temp.value prepend from storage mcl:main stack[0][0]",
@@ -885,7 +1341,7 @@ def compile(filename:str, code_obj = None):
                         "data modify storage mcl:main stack[0][0] set from storage mcl:main temp"])
                 else:
                     add_lines(["# BUILD EMPTY LIST",
-                               'data modify storage mcl:main stack[0] prepend value {value:[], type:"list"}'])
+                               'data modify storage mcl:main stack[0] prepend value {value:[], type:{name:"list"}}'])
             case 104:
                 # BUILD SET(count)
                 # works the same as BUILD TUPLE but builds a set
@@ -918,25 +1374,43 @@ def compile(filename:str, code_obj = None):
                 match inst.argval:
                     case '==':
                         add_lines(
-                            ["# COMPARE TOS1 == TOS",
-                             "data modify storage mcl:main temp set from storage mcl:main stack[0][0]",
-                             "data remove storage mcl:main stack[0][0]",
-                             "execute store success score #mcl mcl0 run data modify storage mcl:main temp set from storage mcl:main stack[0][0]",
-                             "data remove storage mcl:main stack[0][0]"])
+                            ["# COMPARE OP eq",
+                             'data modify storage mcl:main temp set value {callable:"__eq__", args:[]}'])
+                        add_lines(["function mcl:util/special_method_invoker"])
                     case '<=':
-                        pass
+                        add_lines(
+                            ["# COMPARE OP le",
+                             'data modify storage mcl:main temp set value {callable:"__le__", args:[]}'])
+                        add_lines(
+                                ["function mcl:util/special_method_invoker"])
                     case '>=':
-                        pass
+                        add_lines(
+                            ["# COMPARE OP ge",
+                             'data modify storage mcl:main temp set value {callable:"__ge__", args:[]}'])
+                        add_lines(
+                                ["function mcl:util/special_method_invoker"])
                     case '>':
-                        pass
+                        add_lines(
+                            ["# COMPARE OP gt",
+                             'data modify storage mcl:main temp set value {callable:"__gt__", args:[]}'])
+                        add_lines(
+                                ["function mcl:util/special_method_invoker"])
                     case '<':
-                        pass
+                        add_lines(
+                            ["# COMPARE OP lt",
+                             'data modify storage mcl:main temp set value {callable:"__lt__", args:[]}'])
+                        add_lines(
+                                ["function mcl:util/special_method_invoker"])
                     case '!=':
-                        pass
+                        add_lines(
+                            ["# COMPARE OP ne",
+                             'data modify storage mcl:main temp set value {callable:"__ne__", args:[]}'])
+                        add_lines(
+                                ["function mcl:util/special_method_invoker"])
             case 108:
                 # IMPORT NAME
                 # meta
-                pass
+                add_lines(['data remove storage mcl:main stack[0][0]'])
             case 109:
                 # IMPORT FROM
                 # meta
@@ -971,14 +1445,14 @@ def compile(filename:str, code_obj = None):
                 # if TOS is false, sets the byte counter to target
                 # TOS is popped.
                 add_lines(["# POP JUMP IF FALSE"])
-                start_if("execute if score #mcl mcl0 matches 0 run")
+                start_if("execute if score #mcl0 val matches 0 run")
                 queue_end_on_instr(inst.arg)
             case 115:
                 # POP JUMP IF TRUE(targer)
                 # if TOS is true, sets the byte counter to target
                 # TOS is popped.
                 add_lines(["# POP JUMP IF TRUE"])
-                start_if("execute unless score #mcl mcl0 matches 0 run")
+                start_if("execute unless score #mcl0 val matches 0 run")
                 queue_end_on_instr(inst.arg)
             case 116:
                 # LOAD GLOBAL(namei)
@@ -1038,55 +1512,7 @@ def compile(filename:str, code_obj = None):
                 # CALL FUNCTION pops all arguments and the callable object
                 # off the stack[0], calls the callable object with those args,
                 # and pushes the returned value to the stack[0]
-                if (fn := prev_calls[-inst.arg - 1].argval) in GLOBALS:
-                    match fn:
-                        case 'print':
-                            add_lines(["# format TOS into string if TOS is a number"])
-                            start_if(
-                                'execute if data storage mcl:main stack[0][0].value.num run')
-                            add_lines(
-                                ["data modify storage mcl:main temp set value [[]]",
-                                 "data modify storage mcl:main temp append from storage mcl:main stack[0][0].value.num"])
-                            start_while(
-                                "execute if data storage mcl:main temp[1][0] run")
-                            add_lines(
-                                ["execute store result entity @e[type=marker,tag=read_head,limit=1] Pos[0] double 1 run data get storage mcl:main temp[1][0] 1",
-                                 "execute at @e[type=minecraft:marker,limit=1,tag=read_head] run data modify storage mcl:main temp[0] append from block ~ ~ ~ Items[0].tag.num_to_str",
-                                 "data remove storage mcl:main temp[1][0]"])
-                            end()
-                            add_lines(["data modify storage mcl:main stack[0][0].value set from storage mcl:main temp[0]"])
-                            end()
-                            add_lines(['# PRINT',
-                                       'tellraw @p {"nbt":"stack[0][0].value","storage":"mcl:main","interpret":true}'])
-                        case 'str':
-                            add_lines(
-                                ["# format TOS into string if TOS is a number"])
-                            start_if(
-                                'execute if data storage mcl:main stack[0][0].value.num run')
-                            add_lines(
-                                ["data modify storage mcl:main temp set value [[]]",
-                                 "data modify storage mcl:main temp append from storage mcl:main stack[0][0].value.num"])
-                            start_while(
-                                "execute if data storage mcl:main temp[1][0] run")
-                            add_lines(
-                                ["execute store result entity @e[type=marker,tag=read_head,limit=1] Pos[0] double 1 run data get storage mcl:main temp[1][0] 1",
-                                 "execute at @e[type=minecraft:marker,limit=1,tag=read_head] run data modify storage mcl:main temp[0] append from block ~ ~ ~ Items[0].tag.num_to_str",
-                                 "data remove storage mcl:main temp[1][0]"])
-                            end()
-                            end()
-                elif (fn := prev_calls[-inst.arg - 1].argval) in GLOBAL_METHODS:
-                    add_lines(
-                        ["# CALL GLOBAL METHOD",
-                         "data modify storage mcl:main temp set value {callable:{}, instance:{}}",
-                         f"data modify storage mcl:main temp.instance set from storage mcl:main stack[0][0]",
-                         f"data remove storage mcl:main stack[0][0]"])
-
-                    add_lines(
-                        ["data modify storage mcl:main temp.callable set from storage mcl:main stack[0][0]",
-                            "data remove storage mcl:main stack[0][0]"])
-                    add_lines(["function mcl:util/method_invoker"])
-
-                else:
+                if not building_literal_function:
                     add_lines(
                         ["# CALL FUNCTION",
                         "data modify storage mcl:main temp set value {args:[], callable:{}}"])
@@ -1094,16 +1520,18 @@ def compile(filename:str, code_obj = None):
                     for _ in range(inst.argval):
                         add_lines(["data modify storage mcl:main temp.args append from storage mcl:main stack[0][0]",
                                 "data remove storage mcl:main stack[0][0]"])
-                    # the args and callable are now stored in temp[] with temp[-1] being the callable
-
                     add_lines(
                         ["data modify storage mcl:main temp.callable set from storage mcl:main stack[0][0]",
-                        "data remove storage mcl:main stack[0][0]",
-                        "data modify storage mcl:main stack prepend value []"])
+                         "data remove storage mcl:main stack[0][0]",
+                         "data modify storage mcl:main stack prepend value []"])
                     for _ in range(inst.arg):
                         add_lines(["data modify storage mcl:main stack[0] prepend from storage mcl:main temp.args[-1]",
-                                   "data remove storage mcl:main temp.args[-1]"])
+                                "data remove storage mcl:main temp.args[-1]"])
                     add_lines(["function mcl:util/invoker"])
+                else:
+                    building_literal_function = False
+                    
+
             case 132:
                 # MAKE FUNCTION(flags)
                 # Pushes a new function object on the stack[0]
@@ -1122,7 +1550,7 @@ def compile(filename:str, code_obj = None):
                 Function.active.lines.pop()
                 Function.active.lines.pop()
                 add_lines(["# MAKE FUNCTION",
-                           f'data modify storage mcl:main stack[0] prepend value {{value:"{prev_calls[-1].argval}", type:"callable"}}'])
+                           f'data modify storage mcl:main stack[0] prepend value {{value:"{prev_calls[-1].argval}", type:{{name:"callable"}}}}'])
                 add_fn(constants[-1])
             case 133:
                 # BUILD SLICE(argc)
@@ -1278,9 +1706,9 @@ def compile(filename:str, code_obj = None):
                 # Otherwise, NULL and the object return by the attribute lookup
                 # are pushed.
                 add_lines(["# LOAD METHOD",
-                           f'execute if data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names[{inst.arg}] set value {{value:"{inst.argval}",type:"callable"}}',
-                           f'execute unless data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names append value {{value:"{inst.argval}",type:"callable"}}',
-                           f'data modify storage mcl:main stack[0] prepend value {{value:"{inst.argval}",type:"callable"}}'])
+                           f'execute if data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names[{inst.arg}] set value {{value:"{inst.argval}",type:{{name:"callable"}}}}',
+                           f'execute unless data storage mcl:main co_names[{inst.arg}] run data modify storage mcl:main co_names append value {{value:"{inst.argval}",type:{{name:"callable"}}}}',
+                           f'data modify storage mcl:main stack[0] prepend value {{value:"{inst.argval}",type:{{name:"callable"}}}}'])
             case 161:
                 # CALL METHOD(argc)
                 # Calls a method
@@ -1330,7 +1758,8 @@ def compile(filename:str, code_obj = None):
                 print(165)
         prev_calls.append(inst)
 
-compile('./script.py')
+
+compile_datapack('./script.py')
 
 for f in Function.functions:
     if f.name in ['tick']:
